@@ -40,24 +40,26 @@ module Storages::Peripherals::StorageInteraction::Nextcloud
     # rubocop:disable Metrics/AbcSize
     def call(user:, folder:)
       result = Util.token(user:, configuration: @configuration) do |token|
-        base_path = Util.join_uri_path(@uri.path, "remote.php/dav/files")
-        @location_prefix = Util.join_uri_path(base_path, token.origin_user_id.gsub(' ', '%20'))
+        @location_prefix = Util.join_uri_path(@uri.path, "remote.php/dav/files", token.origin_user_id.gsub(' ', '%20'))
 
-        response = Util.http(@uri).propfind(
-          Util.join_uri_path(base_path, CGI.escapeURIComponent(token.origin_user_id), requested_folder(folder)),
-          requested_properties,
-          {
-            'Depth' => '1',
-            'Authorization' => "Bearer #{token.access_token}"
-          }
-        )
+        response = Util
+                     .httpx
+                     .request(
+                       "PROPFIND",
+                       Util.join_uri_path(@uri, "remote.php/dav/files", CGI.escapeURIComponent(token.origin_user_id), requested_folder(folder)),
+                       xml: requested_properties,
+                       headers: {
+                         'Depth' => '1',
+                         'Authorization' => "Bearer #{token.access_token}"
+                       }
+                     )
 
-        case response
-        when Net::HTTPSuccess
+        case response.status
+        when 207
           ServiceResult.success(result: response.body)
-        when Net::HTTPNotFound
+        when 404
           Util.error(:not_found)
-        when Net::HTTPUnauthorized
+        when 401
           Util.error(:unauthorized)
         else
           Util.error(:error)
@@ -105,9 +107,9 @@ module Storages::Peripherals::StorageInteraction::Nextcloud
               .to_a
 
         parent, *files =
-          a.map do |file_element|
-            storage_file(file_element)
-          end
+        a.map do |file_element|
+          storage_file(file_element)
+        end
 
         ::Storages::StorageFiles.new(files, parent, ancestors(parent.location))
       end

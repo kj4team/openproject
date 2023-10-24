@@ -77,26 +77,30 @@ module Storages::Peripherals::StorageInteraction::Nextcloud
         end
       end.to_xml
 
-      response = Util.http(@uri).proppatch(
-        Util.join_uri_path(@uri.path,
-                           "remote.php/dav/files",
-                           CGI.escapeURIComponent(@username),
-                           Util.escape_path(path)),
-        body,
-        Util.basic_auth_header(@username, @password)
-      )
+      response = Util
+                   .httpx
+                   .with(debug_level: 1, debug: $stdout)
+                   .basic_auth(@username, @password)
+                   .request(
+                     "PROPPATCH",
+                     Util.join_uri_path(@uri,
+                                        "remote.php/dav/files",
+                                        CGI.escapeURIComponent(@username),
+                                        Util.escape_path(path)),
+                     xml: body
+                   )
 
-      case response
-      when Net::HTTPSuccess
-        doc = Nokogiri::XML(response.body)
+      case response.status
+      when 207
+        doc = Nokogiri::XML(response.body.to_s)
         if doc.xpath("/d:multistatus/d:response/d:propstat[d:status[text() = 'HTTP/1.1 200 OK']]/d:prop/nc:acl-list").present?
           ServiceResult.success
         else
           Util.error(:error, "nc:acl properly has not been set for #{path}")
         end
-      when Net::HTTPNotFound
+      when 404
         Util.error(:not_found)
-      when Net::HTTPUnauthorized
+      when 401
         Util.error(:unauthorized)
       else
         Util.error(:error)

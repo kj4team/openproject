@@ -41,19 +41,23 @@ module Storages::Peripherals::StorageInteraction::Nextcloud
     end
 
     def call(user:, group: @group)
-      response = Util.http(@uri).post(
-        Util.join_uri_path(@uri.path, 'ocs/v1.php/cloud/users', CGI.escapeURIComponent(user), 'groups'),
-        "groupid=#{CGI.escapeURIComponent(group)}",
-        Util
-          .basic_auth_header(@username, @password)
-          .merge(
-            'OCS-APIRequest' => 'true'
-          )
-      )
+      response = Util
+                   .httpx
+                   .basic_auth(@username, @password)
+                   .with(headers: { 'OCS-APIRequest' => 'true' })
+                   .post(
+                     Util.join_uri_path(
+                       @uri,
+                       'ocs/v1.php/cloud/users',
+                       CGI.escapeURIComponent(user),
+                       'groups'
+                     ),
+                     form: { "groupid" => CGI.escapeURIComponent(group) },
+                   )
 
-      case response
-      when Net::HTTPSuccess
-        statuscode = Nokogiri::XML(response.body).xpath('/ocs/meta/statuscode').text
+      case response.status
+      when 200
+        statuscode = Nokogiri::XML(response.body.to_s).xpath('/ocs/meta/statuscode').text
         case statuscode
         when "100"
           ServiceResult.success(message: "User has been added successfully")
@@ -68,13 +72,13 @@ module Storages::Peripherals::StorageInteraction::Nextcloud
         when "105"
           Util.error(:error, "Failed to add user to group")
         end
-      when Net::HTTPMethodNotAllowed
+      when 405
         Util.error(:not_allowed)
-      when Net::HTTPUnauthorized
+      when 401
         Util.error(:unauthorized)
-      when Net::HTTPNotFound
+      when 404
         Util.error(:not_found)
-      when Net::HTTPConflict
+      when 409
         Util.error(:conflict)
       else
         Util.error(:error)

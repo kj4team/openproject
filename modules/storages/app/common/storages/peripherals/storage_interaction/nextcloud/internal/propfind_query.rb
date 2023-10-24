@@ -90,20 +90,24 @@ module Storages::Peripherals::StorageInteraction::Nextcloud::Internal
         end
       end.to_xml
 
-      response = UTIL.http(@uri).propfind(
-        UTIL.join_uri_path(
-          @uri.path,
-          'remote.php/dav/files',
-          CGI.escapeURIComponent(@username),
-          UTIL.escape_path(path)
-        ),
-        body,
-        UTIL.basic_auth_header(@username, @password).merge('Depth' => depth)
-      )
+      response = UTIL
+                   .httpx
+                   .basic_auth(@username, @password)
+                   .with(headers: { "Depth" => depth})
+                   .request(
+                     "PROPFIND",
+                     UTIL.join_uri_path(
+                       @uri,
+                       'remote.php/dav/files',
+                       CGI.escapeURIComponent(@username),
+                       UTIL.escape_path(path)
+                     ),
+                     xml: body,
+                   )
 
-      case response
-      when Net::HTTPSuccess
-        doc = Nokogiri::XML response.body
+      case response.status
+      when 200..299
+        doc = Nokogiri::XML(response.body.to_s)
         result = {}
         doc.xpath('/d:multistatus/d:response').each do |resource_section|
           resource = CGI.unescape(resource_section.xpath("d:href").text.strip)
@@ -119,11 +123,11 @@ module Storages::Peripherals::StorageInteraction::Nextcloud::Internal
         end
 
         ServiceResult.success(result:)
-      when Net::HTTPMethodNotAllowed
+      when 405
         UTIL.error(:not_allowed)
-      when Net::HTTPUnauthorized
+      when 401
         UTIL.error(:unauthorized)
-      when Net::HTTPNotFound
+      when 404
         UTIL.error(:not_found)
       else
         UTIL.error(:error)

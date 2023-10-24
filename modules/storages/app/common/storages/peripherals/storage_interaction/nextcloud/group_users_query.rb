@@ -42,23 +42,24 @@ module Storages::Peripherals::StorageInteraction::Nextcloud
 
     # rubocop:disable Metrics/AbcSize
     def call(group:)
-      response = Util.http(@uri).get(
-        Util.join_uri_path(@uri.path, "ocs/v1.php/cloud/groups", CGI.escapeURIComponent(group)),
-        Util.basic_auth_header(@username, @password).merge('OCS-APIRequest' => 'true')
-      )
-      case response
-      when Net::HTTPSuccess
-        group_users = Nokogiri::XML(response.body)
+      response = Util
+                   .httpx
+                   .basic_auth(@username, @password)
+                   .with(headers: {'OCS-APIRequest' => 'true'})
+                   .get(Util.join_uri_path(@uri, "ocs/v1.php/cloud/groups", CGI.escapeURIComponent(group)))
+      case response.status
+      when 200
+        group_users = Nokogiri::XML(response.body.to_s)
                         .xpath('/ocs/data/users/element')
                         .map(&:text)
         ServiceResult.success(result: group_users)
-      when Net::HTTPMethodNotAllowed
+      when 405
         Util.error(:not_allowed)
-      when Net::HTTPUnauthorized
+      when 401
         Util.error(:unauthorized)
-      when Net::HTTPNotFound
+      when 404
         Util.error(:not_found)
-      when Net::HTTPConflict
+      when 409
         Util.error(:conflict, error_text_from_response(response))
       else
         Util.error(:error)
