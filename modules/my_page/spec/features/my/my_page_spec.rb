@@ -30,7 +30,7 @@ require 'spec_helper'
 
 require_relative '../../support/pages/my/page'
 
-RSpec.describe 'My page', js: true do
+RSpec.describe 'My page', :js do
   let!(:type) { create(:type) }
   let!(:project) { create(:project, types: [type]) }
   let!(:open_status) { create(:default_status) }
@@ -90,14 +90,14 @@ RSpec.describe 'My page', js: true do
   end
 
   def find_area(name)
-    index = grid.widgets.sort_by(&:id).each_with_index.detect { |w, _index| w.options["name"] == name }.last
+    retry_block do
+      index = grid.widgets.sort_by(&:id).each_with_index.detect { |w, _index| w.options["name"] == name }.last
 
-    Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(#{index + 1})")
+      Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(#{index + 1})")
+    end
   end
 
   it 'renders the default view, allows altering and saving' do
-    sleep(0.5)
-
     assigned_area.expect_to_exist
     created_area.expect_to_exist
     assigned_area.expect_to_span(1, 1, 2, 2)
